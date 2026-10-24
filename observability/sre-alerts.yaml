@@ -1,0 +1,60 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: sre-production-alerts
+  namespace: monitoring
+  labels:
+    role: alert-rules
+spec:
+  groups:
+  - name: SRE-Reliability-Rules
+    rules:
+    - alert: MongoDbDown
+      expr: mongodb_up == 0
+      for: 1m
+      labels:
+        severity: critical
+        tier: database
+      annotations:
+        summary: "MongoDB instance is DOWN"
+        description: "MongoDB pod in three-tier namespace has been unreachable for more than 1 minute. Impact: Application read/writes failing."
+
+    - alert: MongoHighConnectionUtilization
+      expr: (mongodb_connections{state="current"} / (mongodb_connections{state="current"} + mongodb_connections{state="available"})) * 100 > 80
+      for: 2m
+      labels:
+        severity: warning
+        tier: database
+      annotations:
+        summary: "MongoDB connection pool > 80% capacity"
+        description: "MongoDB is running out of available connection slots. Current utilization is above 80%."
+
+    - alert: PodCrashLooping
+      expr: rate(kube_pod_container_status_restarts_total{namespace=~"three-tier|monitoring"}[5m]) * 60 > 2
+      for: 2m
+      labels:
+        severity: critical
+        tier: kubernetes
+      annotations:
+        summary: "Pod is CrashLooping in {{ $labels.namespace }}"
+        description: "Pod {{ $labels.pod }} container {{ $labels.container }} restarted more than 2 times in 5 minutes."
+
+    - alert: NodeMemoryHighUtilization
+      expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+      for: 5m
+      labels:
+        severity: warning
+        tier: infrastructure
+      annotations:
+        summary: "Host memory utilization > 85%"
+        description: "Node {{ $labels.instance }} memory usage is above 85% for 5 minutes."
+
+    - alert: NodeDiskSpaceFillingFast
+      expr: (node_filesystem_free_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 15
+      for: 5m
+      labels:
+        severity: warning
+        tier: infrastructure
+      annotations:
+        summary: "Root filesystem free space < 15%"
+        description: "Host disk {{ $labels.instance }} is running low on disk space (< 15% remaining)."
